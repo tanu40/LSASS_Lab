@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>CTF: LSASS Access Alert | Domain Defender</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', 'Courier New', monospace;
+        }
+
+        body {
+            min-height: 100vh;
+            background: radial-gradient(circle at 20% 30%, #0a0f1e, #03060c);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .glass-panel {
+            background: rgba(10, 20, 30, 0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 32px;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5), 0 0 15px rgba(0,255,255,0.2);
+        }
+
+        .alert-3d {
+            transform: perspective(800px) rotateX(2deg) translateZ(5px);
+            transition: transform 0.3s ease, box-shadow 0.2s;
+        }
+
+        .alert-3d:hover {
+            transform: perspective(800px) rotateX(0deg) translateZ(10px);
+            box-shadow: 0 0 25px rgba(255, 80, 40, 0.7);
+        }
+
+        button {
+            background: #1e2a3a;
+            border: 1px solid #2c9c9c;
+            color: #ffffff;
+            padding: 8px 18px;
+            border-radius: 60px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.2s;
+            margin: 5px;
+        }
+
+        button:hover {
+            background: #2c9c9c;
+            box-shadow: 0 0 8px cyan;
+            border-color: white;
+        }
+
+        input, select {
+            background: #0f1a24;
+            border: 1px solid #2c6e6e;
+            padding: 8px 12px;
+            border-radius: 28px;
+            color: #ffffff;
+            outline: none;
+            margin: 5px 0;
+            width: 100%;
+        }
+
+        input::placeholder, select {
+            color: #aaaaaa;
+        }
+
+        input:focus {
+            border-color: cyan;
+            box-shadow: 0 0 5px cyan;
+        }
+
+        label {
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+            cursor: pointer;
+        }
+
+        label input {
+            width: auto;
+            margin: 0;
+        }
+
+        .severity-meter {
+            height: 10px;
+            background: #2e3b3b;
+            border-radius: 10px;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .severity-fill {
+            width: 95%;
+            height: 100%;
+            background: linear-gradient(90deg, #ff4444, #ffaa00);
+            border-radius: 10px;
+            animation: pulseRed 1.2s infinite;
+        }
+
+        @keyframes pulseRed {
+            0% { opacity: 0.8; box-shadow: 0 0 2px red; }
+            100% { opacity: 1; box-shadow: 0 0 12px #ff4444; }
+        }
+
+        .grid-2c {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .card {
+            background: rgba(0, 0, 0, 0.75);
+            border-radius: 28px;
+            padding: 20px;
+            margin: 12px;
+            border-left: 4px solid #00ccff;
+        }
+
+        .task-item {
+            margin: 20px 0;
+            border-bottom: 1px dashed #2a5f6e;
+            padding-bottom: 16px;
+        }
+
+        .task-item h4 {
+            color: #00ccff;
+            margin-bottom: 10px;
+        }
+
+        .task-item p {
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+
+        .flag-success {
+            background: #00a86b;
+            padding: 12px;
+            border-radius: 40px;
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 2px;
+            margin: 10px 0;
+            color: #ffffff;
+            animation: glowPulse 0.8s ease-in-out;
+        }
+
+        @keyframes glowPulse {
+            0% { box-shadow: 0 0 0 0 #00ff88; }
+            50% { box-shadow: 0 0 20px 5px #00ff88; }
+            100% { box-shadow: 0 0 0 0 #00ff88; }
+        }
+
+        .feedback-correct {
+            color: #00ff88;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .feedback-incorrect {
+            color: #ff6666;
+            margin-left: 10px;
+            font-weight: bold;
+        }
+
+        .dashboard {
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .flex-between h2 {
+            color: #00ffff;
+        }
+
+        table {
+            width: 100%;
+            margin-top: 16px;
+            border-collapse: collapse;
+        }
+
+        td, th {
+            padding: 10px;
+            border-bottom: 1px solid #2c6e6e;
+            text-align: left;
+            color: #ffffff;
+        }
+
+        th {
+            color: #00ccff;
+        }
+
+        .login-tabs {
+            display: flex;
+            gap: 12px;
+            border-bottom: 1px solid #2c9c9c;
+            margin-bottom: 20px;
+        }
+
+        .login-tab {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
+            color: #cccccc;
+        }
+
+        .login-tab.active {
+            border-bottom-color: cyan;
+            color: #00ffff;
+        }
+
+        pre {
+            background: #000000aa;
+            padding: 10px;
+            border-radius: 12px;
+            overflow-x: auto;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            margin: 10px 0;
+        }
+
+        code {
+            background: #000000;
+            padding: 2px 6px;
+            border-radius: 6px;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+        }
+
+        h3 {
+            color: #00ccff;
+            margin-bottom: 15px;
+        }
+
+        .batch-info {
+            color: #ffffff;
+            margin-top: 10px;
+        }
+
+        .batch-info code {
+            color: #00ff00;
+        }
+
+        .error-msg {
+            color: #ffaa88;
+            font-size: 0.8rem;
+            margin-top: 10px;
+        }
+
+        .task-status {
+            margin-top: 8px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+<div id="appRoot" class="dashboard"></div>
+
+<script>
+    // ---------- STORAGE KEYS ----------
+    const STORAGE_USERS = "ctf_lsass_users";
+    const STORAGE_BATCH_PWD = "ctf_lsass_batch_pwd";
+    const STORAGE_ADMIN_SESSION = "ctf_admin_session";
+    const STORAGE_STUDENT_SESSION = "ctf_student_session";
+    const STORAGE_ADMIN_CRED = "ctf_admin_cred";
+    const LOGIN_ATTEMPTS = "ctf_login_attempts";
+
+    const DEFAULT_ADMIN = { username: "admin", password: "admin123" };
+    const DEFAULT_STUDENTS = [
+        { id: "s1", username: "alice", password: "alice123", active: true },
+        { id: "s2", username: "bob", password: "b0bpass", active: true }
+    ];
+
+    function simpleHash(str) {
+        let hash = 0;
+        for(let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return hash.toString(16);
+    }
+
+    function initSystem() {
+        if(!localStorage.getItem(STORAGE_ADMIN_CRED)) {
+            localStorage.setItem(STORAGE_ADMIN_CRED, JSON.stringify({
+                username: DEFAULT_ADMIN.username,
+                passwordHash: simpleHash(DEFAULT_ADMIN.password)
+            }));
+        }
+        if(!localStorage.getItem(STORAGE_USERS)) {
+            localStorage.setItem(STORAGE_USERS, JSON.stringify(DEFAULT_STUDENTS));
+        }
+        if(!localStorage.getItem(STORAGE_BATCH_PWD)) {
+            localStorage.setItem(STORAGE_BATCH_PWD, "CyberBatch2025");
+        }
+        if(!localStorage.getItem(LOGIN_ATTEMPTS)) {
+            localStorage.setItem(LOGIN_ATTEMPTS, JSON.stringify({}));
+        }
+    }
+
+    function getCurrentSession() {
+        const admin = localStorage.getItem(STORAGE_ADMIN_SESSION);
+        if(admin === "true") return { role: "admin", username: "admin" };
+        const student = localStorage.getItem(STORAGE_STUDENT_SESSION);
+        if(student) {
+            try {
+                let data = JSON.parse(student);
+                return { role: "student", username: data.username, studentData: data };
+            } catch(e) { return null; }
+        }
+        return null;
+    }
+
+    function clearSession() {
+        localStorage.removeItem(STORAGE_ADMIN_SESSION);
+        localStorage.removeItem(STORAGE_STUDENT_SESSION);
+    }
+
+    function logout() {
+        clearSession();
+        renderLogin();
+    }
+
+    function isLoginBlocked(username) {
+        let attempts = JSON.parse(localStorage.getItem(LOGIN_ATTEMPTS));
+        const now = Date.now();
+        const record = attempts[username] || { count: 0, lastAttempt: 0 };
+        if(now - record.lastAttempt < 5*60*1000 && record.count >= 5) return true;
+        return false;
+    }
+
+    function recordFailedAttempt(username) {
+        let attempts = JSON.parse(localStorage.getItem(LOGIN_ATTEMPTS));
+        if(!attempts[username]) attempts[username] = { count: 0, lastAttempt: 0 };
+        attempts[username].count += 1;
+        attempts[username].lastAttempt = Date.now();
+        localStorage.setItem(LOGIN_ATTEMPTS, JSON.stringify(attempts));
+    }
+
+    function resetAttempts(username) {
+        let attempts = JSON.parse(localStorage.getItem(LOGIN_ATTEMPTS));
+        if(attempts[username]) delete attempts[username];
+        localStorage.setItem(LOGIN_ATTEMPTS, JSON.stringify(attempts));
+    }
+
+    function authenticateStudent(username, password, batchPassword) {
+        if(isLoginBlocked(username)) return { success: false, error: "Too many failed attempts. Wait 5 min." };
+        const users = JSON.parse(localStorage.getItem(STORAGE_USERS));
+        const student = users.find(u => u.username === username);
+        if(!student) { recordFailedAttempt(username); return { success: false, error: "Invalid credentials" }; }
+        if(student.password !== password) { recordFailedAttempt(username); return { success: false, error: "Invalid credentials" }; }
+        if(!student.active) return { success: false, error: "Account is deactivated by admin" };
+        const currentBatch = localStorage.getItem(STORAGE_BATCH_PWD);
+        if(batchPassword !== currentBatch) return { success: false, error: "Wrong batch password" };
+        resetAttempts(username);
+        return { success: true, student };
+    }
+
+    function authenticateAdmin(username, password) {
+        if(isLoginBlocked(username)) return false;
+        const stored = JSON.parse(localStorage.getItem(STORAGE_ADMIN_CRED));
+        if(stored.username === username && simpleHash(password) === stored.passwordHash) {
+            resetAttempts(username);
+            return true;
+        }
+        recordFailedAttempt(username);
+        return false;
+    }
+
+    function changeAdminPassword(oldPwd, newPwd) {
+        const stored = JSON.parse(localStorage.getItem(STORAGE_ADMIN_CRED));
+        if(simpleHash(oldPwd) !== stored.passwordHash) return false;
+        stored.passwordHash = simpleHash(newPwd);
+        localStorage.setItem(STORAGE_ADMIN_CRED, JSON.stringify(stored));
+        return true;
+    }
+
+    function getStudents() { return JSON.parse(localStorage.getItem(STORAGE_USERS)); }
+    function saveStudents(students) { localStorage.setItem(STORAGE_USERS, JSON.stringify(students)); }
+    
+    function addStudent(username, password, active=true) {
+        let students = getStudents();
+        if(students.find(s => s.username === username)) return false;
+        students.push({ id: Date.now().toString(), username, password, active });
+        saveStudents(students);
+        return true;
+    }
+    
+    function updateStudent(id, updates) {
+        let students = getStudents();
+        let idx = students.findIndex(s => s.id === id);
+        if(idx === -1) return false;
+        students[idx] = { ...students[idx], ...updates };
+        saveStudents(students);
+        return true;
+    }
+    
+    function deleteStudent(id) {
+        let students = getStudents();
+        let filtered = students.filter(s => s.id !== id);
+        if(filtered.length === students.length) return false;
+        saveStudents(filtered);
+        return true;
+    }
+    
+    function setBatchPassword(newPwd) {
+        localStorage.setItem(STORAGE_BATCH_PWD, newPwd);
+    }
+    
+    function getBatchPassword() { return localStorage.getItem(STORAGE_BATCH_PWD); }
+
+    // CTF STATE
+    let ctfState = {
+        task1Done: false, task2Done: false, task3Done: false, task4Done: false, task5Done: false,
+        flagRevealed: false
+    };
+
+    function getFlag() {
+        if(ctfState.task1Done && ctfState.task2Done && ctfState.task3Done && ctfState.task4Done && ctfState.task5Done) {
+            return "FLAG{LSASS_COMPROMISE_DETECTED}";
+        }
+        return null;
+    }
+
+    // Render Functions
+    function renderLogin() {
+        const root = document.getElementById("appRoot");
+        if(!root) return;
+        
+        root.innerHTML = `
+            <div class="glass-panel" style="width: 500px; max-width: 100%; padding: 30px;">
+                <h2 style="color: cyan; text-align:center;">🔐 LSASS Defense CTF</h2>
+                <div class="login-tabs">
+                    <button class="login-tab active" id="loginTabStudent">Student Login</button>
+                    <button class="login-tab" id="loginTabAdmin">Admin Login</button>
+                </div>
+                <div id="studentLoginPanel">
+                    <input type="text" id="stuUsername" placeholder="Username" /><br/>
+                    <input type="password" id="stuPassword" placeholder="Password" /><br/>
+                    <input type="password" id="stuBatch" placeholder="Batch Password" /><br/>
+                    <button id="doStudentLogin">Enter CTF</button>
+                    <div id="loginError" class="error-msg"></div>
+                </div>
+                <div id="adminLoginPanel" style="display:none;">
+                    <input type="text" id="adminUsername" placeholder="Admin Username" /><br/>
+                    <input type="password" id="adminPassword" placeholder="Admin Password" /><br/>
+                    <button id="doAdminLogin">Admin Access</button>
+                    <div id="adminLoginError" class="error-msg"></div>
+                </div>
+                <div style="font-size:12px; color:#6c8b8b; margin-top:20px;">🔍 Incident: procdump64.exe -ma lsass.exe on DC-01</div>
+            </div>
+        `;
+        
+        const studentPanel = document.getElementById("studentLoginPanel");
+        const adminPanel = document.getElementById("adminLoginPanel");
+        const studentTab = document.getElementById("loginTabStudent");
+        const adminTab = document.getElementById("loginTabAdmin");
+        
+        if(studentTab && adminTab) {
+            studentTab.onclick = () => {
+                studentPanel.style.display = "block";
+                adminPanel.style.display = "none";
+                studentTab.classList.add("active");
+                adminTab.classList.remove("active");
+            };
+            adminTab.onclick = () => {
+                studentPanel.style.display = "none";
+                adminPanel.style.display = "block";
+                adminTab.classList.add("active");
+                studentTab.classList.remove("active");
+            };
+        }
+        
+        const doStudentLogin = document.getElementById("doStudentLogin");
+        if(doStudentLogin) {
+            doStudentLogin.onclick = () => {
+                const uname = document.getElementById("stuUsername").value.trim();
+                const pwd = document.getElementById("stuPassword").value;
+                const batch = document.getElementById("stuBatch").value;
+                if(!uname || !pwd || !batch) {
+                    document.getElementById("loginError").innerText = "All fields required";
+                    return;
+                }
+                const auth = authenticateStudent(uname, pwd, batch);
+                if(auth.success) {
+                    localStorage.setItem(STORAGE_STUDENT_SESSION, JSON.stringify({ username: auth.student.username, id: auth.student.id }));
+                    renderStudentDashboard();
+                } else {
+                    document.getElementById("loginError").innerText = auth.error;
+                }
+            };
+        }
+        
+        const doAdminLogin = document.getElementById("doAdminLogin");
+        if(doAdminLogin) {
+            doAdminLogin.onclick = () => {
+                const uname = document.getElementById("adminUsername").value.trim();
+                const pwd = document.getElementById("adminPassword").value;
+                if(!uname || !pwd) {
+                    document.getElementById("adminLoginError").innerText = "Enter credentials";
+                    return;
+                }
+                if(authenticateAdmin(uname, pwd)) {
+                    localStorage.setItem(STORAGE_ADMIN_SESSION, "true");
+                    renderAdminDashboard();
+                } else {
+                    document.getElementById("adminLoginError").innerText = "Invalid admin credentials";
+                }
+            };
+        }
+    }
+
+    function renderStudentDashboard() {
+        const session = getCurrentSession();
+        if(!session || session.role !== "student") { renderLogin(); return; }
+        
+        const root = document.getElementById("appRoot");
+        if(!root) return;
+        
+        const flag = getFlag();
+        const allCompleted = ctfState.task1Done && ctfState.task2Done && ctfState.task3Done && ctfState.task4Done && ctfState.task5Done;
+        
+        root.innerHTML = `
+            <div class="glass-panel" style="width: 100%; padding: 20px;">
+                <div class="flex-between">
+                    <h2 style="color:#0ff;">🛡️ Incident Responder: ${session.username}</h2>
+                    <button id="logoutBtn">🚪 Logout</button>
+                </div>
+                <div class="severity-meter" style="margin: 16px 0;"><div class="severity-fill"></div></div>
+                <div class="grid-2c">
+                    <div class="card alert-3d" style="flex:1;">
+                        <h3>⚠️ EDR ALERT CARD</h3>
+                        <pre>[HIGH] LSASS Access
+Process: procdump64.exe -ma lsass.exe lsass.dmp
+User: NT AUTHORITY\\SYSTEM (via ADMINISTRATOR)
+Host: DC-01 (Domain Controller)
+Tool: Sysinternals Procdump
+Severity: CRITICAL</pre>
+                        <div class="severity-meter"><div class="severity-fill"></div></div>
+                        <p><strong>Command Line:</strong> <code>procdump64.exe -ma lsass.exe lsass.dmp</code></p>
+                    </div>
+                    <div class="card" style="flex:1.5;">
+                        ${allCompleted && flag ? `<div class="flag-success">🏆 FLAG: ${flag} 🏆</div>` : '<div style="color:#ffffff; padding:10px; text-align:center; background: rgba(0,0,0,0.5); border-radius: 20px;">🔒 Complete all 5 tasks correctly to reveal the flag</div>'}
+                        <div class="task-item">
+                            <h4>📌 Task 1: Tool Identification</h4>
+                            <p>Select if the tool usage is legitimate in this context:</p>
+                            <select id="task1Answer">
+                                <option value="">--Select--</option>
+                                <option value="true">Legitimate</option>
+                                <option value="false">Malicious</option>
+                            </select>
+                            <button id="submitTask1">Check Answer</button>
+                            <div class="task-status"><span id="task1Feedback"></span></div>
+                        </div>
+                        <div class="task-item">
+                            <h4>📌 Task 2: Expected Activity? (Change Window)</h4>
+                            <p>Verify change window authorization:</p>
+                            <button id="showCalendarBtn">📅 Show Change Calendar</button>
+                            <div id="calendarMock" style="background:#011116; border-radius:18px; margin-top:8px; padding:8px; display:none;">
+                                <p style="color:#ffffff;">🗓️ Maintenance Tickets: No active change window for LSASS dump on DC-01. Last approved: 2025-05-10 (unrelated).</p>
+                                <button id="selectNoWindowBtn">✅ Confirm "No change window"</button>
+                            </div>
+                            <div class="task-status"><span id="task2Feedback"></span></div>
+                        </div>
+                        <div class="task-item">
+                            <h4>📌 Task 3: Consequences (Multiple)</h4>
+                            <p>Select ALL that apply from LSASS dump on Domain Controller:</p>
+                            <label><input type="checkbox" value="hashes" id="chkHashes"> Dumped NTLM hashes / credentials</label><br/>
+                            <label><input type="checkbox" value="golden" id="chkGolden"> Golden Ticket attack (KRBTGT hash)</label><br/>
+                            <label><input type="checkbox" value="domain" id="chkDomain"> Full domain compromise potential</label><br/>
+                            <button id="submitTask3">Check Selections</button>
+                            <div class="task-status"><span id="task3Feedback"></span></div>
+                        </div>
+                        <div class="task-item">
+                            <h4>📌 Task 4: Immediate Containment</h4>
+                            <p>Select correct containment actions:</p>
+                            <label><input type="checkbox" id="isolateDC"> Isolate DC from network</label><br/>
+                            <label><input type="checkbox" id="resetKrbtgt"> Reset KRBTGT account password twice</label><br/>
+                            <label><input type="checkbox" id="reboot"> Reboot without forensics</label><br/>
+                            <button id="submitTask4">Check Selections</button>
+                            <div class="task-status"><span id="task4Feedback"></span></div>
+                        </div>
+                        <div class="task-item">
+                            <h4>📌 Task 5: Forensic Artifact</h4>
+                            <p>What critical file should be retrieved from DC-01?</p>
+                            <input type="text" id="forensicFile" placeholder="Enter filename" />
+                            <button id="submitTask5">Check Answer</button>
+                            <div class="task-status"><span id="task5Feedback"></span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        document.getElementById("logoutBtn").onclick = logout;
+        
+        // TASK 1
+        document.getElementById("submitTask1").onclick = () => {
+            const val = document.getElementById("task1Answer").value;
+            const feedbackSpan = document.getElementById("task1Feedback");
+            if(val === "false") {
+                ctfState.task1Done = true;
+                feedbackSpan.innerHTML = "✓ Correct";
+                feedbackSpan.className = "feedback-correct";
+            } else if(val === "true") {
+                ctfState.task1Done = false;
+                feedbackSpan.innerHTML = "✗ Incorrect";
+                feedbackSpan.className = "feedback-incorrect";
+            } else {
+                feedbackSpan.innerHTML = "✗ Please select an option";
+                feedbackSpan.className = "feedback-incorrect";
+                return;
+            }
+            checkAndRefreshFlag();
+        };
+        
+        // TASK 2
+        const calendarDiv = document.getElementById("calendarMock");
+        document.getElementById("showCalendarBtn").onclick = () => { calendarDiv.style.display = "block"; };
+        document.getElementById("selectNoWindowBtn").onclick = () => {
+            if (!ctfState.task2Done) {
+                ctfState.task2Done = true;
+                document.getElementById("task2Feedback").innerHTML = "✓ Correct";
+                document.getElementById("task2Feedback").className = "feedback-correct";
+                calendarDiv.style.display = "none";
+                checkAndRefreshFlag();
+            }
+        };
+        
+        // TASK 3
+        document.getElementById("submitTask3").onclick = () => {
+            const hashChk = document.getElementById("chkHashes").checked;
+            const goldenChk = document.getElementById("chkGolden").checked;
+            const domainChk = document.getElementById("chkDomain").checked;
+            const feedbackSpan = document.getElementById("task3Feedback");
+            if(hashChk && goldenChk && domainChk) {
+                ctfState.task3Done = true;
+                feedbackSpan.innerHTML = "✓ Correct";
+                feedbackSpan.className = "feedback-correct";
+            } else {
+                ctfState.task3Done = false;
+                feedbackSpan.innerHTML = "✗ Incorrect";
+                feedbackSpan.className = "feedback-incorrect";
+            }
+            checkAndRefreshFlag();
+        };
+        
+        // TASK 4
+        document.getElementById("submitTask4").onclick = () => {
+            const isolate = document.getElementById("isolateDC").checked;
+            const reset = document.getElementById("resetKrbtgt").checked;
+            const reboot = document.getElementById("reboot").checked;
+            const feedbackSpan = document.getElementById("task4Feedback");
+            if(isolate && reset && !reboot) {
+                ctfState.task4Done = true;
+                feedbackSpan.innerHTML = "✓ Correct";
+                feedbackSpan.className = "feedback-correct";
+            } else {
+                ctfState.task4Done = false;
+                feedbackSpan.innerHTML = "✗ Incorrect";
+                feedbackSpan.className = "feedback-incorrect";
+            }
+            checkAndRefreshFlag();
+        };
+        
+        // TASK 5
+        document.getElementById("submitTask5").onclick = () => {
+            let fileName = document.getElementById("forensicFile").value.trim().toLowerCase();
+            const feedbackSpan = document.getElementById("task5Feedback");
+            if(fileName === "lsass.dmp") {
+                ctfState.task5Done = true;
+                feedbackSpan.innerHTML = "✓ Correct";
+                feedbackSpan.className = "feedback-correct";
+            } else {
+                ctfState.task5Done = false;
+                feedbackSpan.innerHTML = "✗ Incorrect";
+                feedbackSpan.className = "feedback-incorrect";
+            }
+            checkAndRefreshFlag();
+        };
+        
+        function checkAndRefreshFlag() {
+            const flag = getFlag();
+            const allComplete = ctfState.task1Done && ctfState.task2Done && ctfState.task3Done && ctfState.task4Done && ctfState.task5Done;
+            if (allComplete && flag && !ctfState.flagRevealed) {
+                ctfState.flagRevealed = true;
+                renderStudentDashboard();
+            } else if (!allComplete && ctfState.flagRevealed) {
+                ctfState.flagRevealed = false;
+                renderStudentDashboard();
+            } else if (allComplete && flag && ctfState.flagRevealed) {
+                // already showing flag, but ensure it's there
+                const flagDiv = document.querySelector(".flag-success");
+                if (!flagDiv) {
+                    renderStudentDashboard();
+                }
+            }
+        }
+    }
+
+    function renderAdminDashboard() {
+        const root = document.getElementById("appRoot");
+        if(!root) return;
+        
+        const students = getStudents();
+        const batchPwd = getBatchPassword();
+        
+        root.innerHTML = `
+            <div class="glass-panel" style="width:100%; padding:24px;">
+                <div class="flex-between"><h2 style="color:#f0a;">👑 Admin Control Center</h2><button id="adminLogout">Logout</button></div>
+                <div class="grid-2c">
+                    <div class="card"><h3>Change Admin Password</h3><input type="password" id="oldAdminPass" placeholder="Old password"/><input type="password" id="newAdminPass" placeholder="New password"/><button id="changeAdminPassBtn">Update</button><span id="adminPassMsg"></span></div>
+                    <div class="card"><h3>Batch Password (Shared)</h3><input type="text" id="newBatchPwd" placeholder="New batch password"/><button id="updateBatchBtn">Update Batch</button><div class="batch-info">Current: <code>${batchPwd}</code></div><span id="batchMsg"></span></div>
+                </div>
+                <div class="card"><h3>Manage Student Accounts</h3>
+                    <div><input id="newStuUser" placeholder="Username"/><input id="newStuPass" placeholder="Password"/><button id="addStudentBtn">➕ Add Student</button></div>
+                    <table>
+                        <thead><tr><th>Username</th><th>Status</th><th>Actions</th></tr></thead>
+                        <tbody>
+                            ${students.map(s => `
+                            <tr>
+                                <td>${s.username}</td>
+                                <td>${s.active ? "🟢 Active" : "🔴 Inactive"}</td>
+                                <td><button onclick="window.toggleActive('${s.id}')">Toggle Active</button> <button onclick="window.deleteStud('${s.id}')">Delete</button></td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        
+        window.toggleActive = (id) => {
+            let student = getStudents().find(s=>s.id===id);
+            if(student) updateStudent(id, { active: !student.active });
+            renderAdminDashboard();
+        };
+        window.deleteStud = (id) => { deleteStudent(id); renderAdminDashboard(); };
+        
+        document.getElementById("adminLogout").onclick = logout;
+        document.getElementById("changeAdminPassBtn").onclick = () => {
+            let oldP = document.getElementById("oldAdminPass").value;
+            let newP = document.getElementById("newAdminPass").value;
+            if(changeAdminPassword(oldP, newP)) document.getElementById("adminPassMsg").innerText = "Password changed!";
+            else document.getElementById("adminPassMsg").innerText = "Old password wrong";
+        };
+        document.getElementById("updateBatchBtn").onclick = () => {
+            let newBatch = document.getElementById("newBatchPwd").value.trim();
+            if(newBatch) { setBatchPassword(newBatch); alert("Batch password changed! Students need new batch to login."); renderAdminDashboard(); }
+        };
+        document.getElementById("addStudentBtn").onclick = () => {
+            let uname = document.getElementById("newStuUser").value.trim();
+            let pwd = document.getElementById("newStuPass").value.trim();
+            if(uname && pwd) { if(addStudent(uname, pwd, true)) alert("Student added"); else alert("Username exists"); renderAdminDashboard();}
+            else alert("Fill username/password");
+        };
+    }
+
+    function route() {
+        const session = getCurrentSession();
+        if(session) {
+            if(session.role === "admin") renderAdminDashboard();
+            else if(session.role === "student") renderStudentDashboard();
+            else renderLogin();
+        } else { renderLogin(); }
+    }
+
+    initSystem();
+    route();
+</script>
+</body>
+</html>
